@@ -47,6 +47,10 @@ param(
     [string]$OutputMode = "Html"
 )
 $ErrorActionPreference = "Stop"
+$scriptRoot = Split-Path -Parent $PSCommandPath
+
+. (Join-Path -Path $scriptRoot -ChildPath "Get-ACLtoHTML.StreamingScan.ps1")
+. (Join-Path -Path $scriptRoot -ChildPath "Get-ACLtoHTML.StreamingHtml.ps1")
 
 $allNinjaInputsBlank = `
     [string]::IsNullOrWhiteSpace([string]$env:pathToAudit) -and `
@@ -960,11 +964,6 @@ try {
         throw "Audit path does not exist: $AuditPath"
     }
 
-    $report = Get-RecursiveACLReport -Path $AuditPath -FoldersOnly:$AuditFoldersOnly
-    if ($null -eq $report -or $report.Count -eq 0) {
-        throw "No audit data was collected."
-    }
-
     if ($OutputMode -eq "Html") {
         if ([string]::IsNullOrWhiteSpace($HTMLOutputPath)) {
             throw "HTMLOutputPath is not set."
@@ -974,7 +973,7 @@ try {
             [void](New-Item -Path $HTMLOutputPath -ItemType Directory -Force)
         }
 
-        New-HtmlACLReport -Data $report -RootPath $AuditPath -OutputPath $HtmlPath -ReportTitle $ReportTitle
+        [void](New-StreamingHtmlAclReport -RootPath $AuditPath -OutputPath $HtmlPath -ReportTitle $ReportTitle -FoldersOnly:$AuditFoldersOnly)
 
         if (-not (Test-Path -LiteralPath $HtmlPath)) {
             throw "HTML report file was not created: $HtmlPath"
@@ -982,6 +981,11 @@ try {
 
         Write-Host "ACL audit complete. HTML report exported to $HtmlPath"
     } else {
+        $report = Get-RecursiveACLReport -Path $AuditPath -FoldersOnly:$AuditFoldersOnly
+        if ($null -eq $report -or $report.Count -eq 0) {
+            throw "No audit data was collected."
+        }
+
         Show-AclReportViewer -Data $report -RootPath $AuditPath -ReportTitle $ReportTitle
         Write-Host "ACL audit complete. Viewer closed."
     }
