@@ -1,3 +1,49 @@
+function ConvertTo-ExtendedLengthPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $Path
+    }
+
+    if ($Path.StartsWith('\\?\')) {
+        return $Path
+    }
+
+    if ($Path.StartsWith('\\')) {
+        return ('\\?\UNC\' + $Path.TrimStart('\'))
+    }
+
+    if ($Path -match '^[A-Za-z]:\\') {
+        return "\\?\$Path"
+    }
+
+    return $Path
+}
+
+function ConvertFrom-ExtendedLengthPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $Path
+    }
+
+    if ($Path.StartsWith('\\?\UNC\')) {
+        return ('\\' + $Path.Substring(8))
+    }
+
+    if ($Path.StartsWith('\\?\')) {
+        return $Path.Substring(4)
+    }
+
+    return $Path
+}
+
 function Get-AclAuditChildPaths {
     param(
         [Parameter(Mandatory)]
@@ -8,6 +54,7 @@ function Get-AclAuditChildPaths {
     )
 
     $childPaths = [System.Collections.Generic.List[string]]::new()
+    $filesystemPath = ConvertTo-ExtendedLengthPath -Path $Path
 
     try {
         $supportsEnumerationOptions = $null -ne ('System.IO.EnumerationOptions' -as [type])
@@ -19,15 +66,15 @@ function Get-AclAuditChildPaths {
             $enumerationOptions.RecurseSubdirectories = $false
             $enumerationOptions.ReturnSpecialDirectories = $false
 
-            foreach ($childPath in [System.IO.Directory]::EnumerateFileSystemEntries($Path, '*', $enumerationOptions)) {
+            foreach ($childPath in [System.IO.Directory]::EnumerateFileSystemEntries($filesystemPath, '*', $enumerationOptions)) {
                 if ($FoldersOnly -and -not [System.IO.Directory]::Exists($childPath)) {
                     continue
                 }
 
-                [void]$childPaths.Add($childPath)
+                [void]$childPaths.Add((ConvertFrom-ExtendedLengthPath -Path $childPath))
             }
         } else {
-            foreach ($childItem in (Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop)) {
+            foreach ($childItem in (Get-ChildItem -LiteralPath $filesystemPath -Force -ErrorAction Stop)) {
                 if (($childItem.Attributes -band [System.IO.FileAttributes]::System) -ne 0) {
                     continue
                 }
@@ -36,7 +83,7 @@ function Get-AclAuditChildPaths {
                     continue
                 }
 
-                [void]$childPaths.Add($childItem.FullName)
+                [void]$childPaths.Add((ConvertFrom-ExtendedLengthPath -Path $childItem.FullName))
             }
         }
     } catch {
@@ -56,9 +103,10 @@ function Get-AclAuditNodeRecord {
     )
 
     $itemType = if ($IsContainer) { "Folder" } else { "File" }
+    $filesystemPath = ConvertTo-ExtendedLengthPath -Path $Path
 
     try {
-        $acl = Get-Acl -LiteralPath $Path -ErrorAction Stop
+        $acl = Get-Acl -LiteralPath $filesystemPath -ErrorAction Stop
         $permissions = foreach ($entry in $acl.Access) {
             [PSCustomObject]@{
                 IdentityReference = $entry.IdentityReference.Value
@@ -124,12 +172,13 @@ function Invoke-StreamingAclScan {
     )
 
     $resolvedRootPath = (Resolve-Path -LiteralPath $RootPath -ErrorAction Stop).Path
+    $filesystemRootPath = ConvertTo-ExtendedLengthPath -Path $resolvedRootPath
 
-    if (-not [System.IO.Directory]::Exists($resolvedRootPath) -and -not [System.IO.File]::Exists($resolvedRootPath)) {
+    if (-not [System.IO.Directory]::Exists($filesystemRootPath) -and -not [System.IO.File]::Exists($filesystemRootPath)) {
         throw "Audit path does not exist: $resolvedRootPath"
     }
 
-    if ($FoldersOnly -and -not [System.IO.Directory]::Exists($resolvedRootPath)) {
+    if ($FoldersOnly -and -not [System.IO.Directory]::Exists($filesystemRootPath)) {
         throw "Root path is not a folder: $resolvedRootPath"
     }
 
@@ -145,7 +194,8 @@ function Invoke-StreamingAclScan {
             [string]$Path
         )
 
-        $isContainer = [System.IO.Directory]::Exists($Path)
+        $filesystemPath = ConvertTo-ExtendedLengthPath -Path $Path
+        $isContainer = [System.IO.Directory]::Exists($filesystemPath)
         $record = Get-AclAuditNodeRecord -Path $Path -IsContainer:$isContainer
         $childPaths = if ($isContainer) {
             Get-AclAuditChildPaths -Path $Path -FoldersOnly:$FoldersOnly
