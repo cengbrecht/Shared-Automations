@@ -103,10 +103,10 @@ function Write-StreamingAclHtmlHeader {
   <span class="badge err" id="errorCountBadge" style="display:none"></span>
   <div class="controls">
     <input type="search" id="searchBox" placeholder="Filter by name..." oninput="filterTree(this.value)">
-    <button onclick="expandRight()">Expand Right</button>
-    <button onclick="collapseLeft()">Collapse Left</button>
-    <button onclick="expandAll()">Expand All</button>
     <button onclick="collapseAll()">Collapse All</button>
+    <button onclick="collapseLeft()">Collapse Left</button>
+    <button onclick="expandRight()">Expand Right</button>
+    <button onclick="expandAll()">Expand All</button>
   </div>
 </header>
 <main>
