@@ -54,6 +54,7 @@ function Get-AclAuditChildPaths {
     )
 
     $childPaths = [System.Collections.Generic.List[string]]::new()
+    $enumerationError = $null
     $filesystemPath = ConvertTo-ExtendedLengthPath -Path $Path
 
     try {
@@ -87,10 +88,14 @@ function Get-AclAuditChildPaths {
             }
         }
     } catch {
-        Write-Warning "Unable to enumerate children for '$Path': $($_.Exception.Message)"
+        $enumerationError = $_.Exception.Message
+        Write-Warning "Unable to enumerate children for '$Path': $enumerationError"
     }
 
-    return ,$childPaths
+    return [PSCustomObject]@{
+        ChildPaths        = $childPaths
+        EnumerationError  = $enumerationError
+    }
 }
 
 function Get-AclAuditNodeRecord {
@@ -197,14 +202,22 @@ function Invoke-StreamingAclScan {
         $filesystemPath = ConvertTo-ExtendedLengthPath -Path $Path
         $isContainer = [System.IO.Directory]::Exists($filesystemPath)
         $record = Get-AclAuditNodeRecord -Path $Path -IsContainer:$isContainer
-        $childPaths = if ($isContainer) {
+        $childPathResult = if ($isContainer) {
             Get-AclAuditChildPaths -Path $Path -FoldersOnly:$FoldersOnly
         } else {
-            [System.Collections.Generic.List[string]]::new()
+            [PSCustomObject]@{
+                ChildPaths       = [System.Collections.Generic.List[string]]::new()
+                EnumerationError = $null
+            }
+        }
+        $childPaths = $childPathResult.ChildPaths
+
+        if (-not [string]::IsNullOrWhiteSpace([string]$childPathResult.EnumerationError)) {
+            $record | Add-Member -NotePropertyName EnumerationError -NotePropertyValue $childPathResult.EnumerationError -Force
         }
 
         $state.ProcessedCount++
-        if ($record.Error) {
+        if ($record.Error -or $record.PSObject.Properties['EnumerationError']) {
             $state.ErrorCount++
         }
 

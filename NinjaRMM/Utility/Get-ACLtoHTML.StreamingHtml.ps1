@@ -128,7 +128,9 @@ function Write-StreamingAclHtmlNodeStart {
 
     $State['NodeCounter']++
     $State['TotalItems']++
-    if ($Record.Error) {
+    $hasError = -not [string]::IsNullOrWhiteSpace([string]$Record.Error) -or -not [string]::IsNullOrWhiteSpace([string]$Record.EnumerationError)
+
+    if ($hasError) {
         $State['ErrorCount']++
     }
 
@@ -141,7 +143,10 @@ function Write-StreamingAclHtmlNodeStart {
     }
 
     $icon = if ($Record.ItemType -eq "Folder") { "&#128193;" } else { "&#128196;" }
-    $labelClass = if ($Record.Error) { "item-name has-error" } else { "item-name" }
+    $labelClass = if ($hasError) { "item-name has-error" } else { "item-name" }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Record.EnumerationError)) {
+        $name = "$name [inaccessible]"
+    }
     $ownerRaw = [string]$Record.Owner
     $ownerIsUnknown = [string]::IsNullOrWhiteSpace($ownerRaw)
     $ownerText = if ($ownerIsUnknown) { "Owner: (unknown)" } else { "Owner: $ownerRaw" }
@@ -157,11 +162,14 @@ function Write-StreamingAclHtmlNodeStart {
     $State['Writer'].Write("<span class='$labelClass' onclick='toggleDetails(""d$nodeId"")'>$icon $(ConvertTo-HtmlEncoded $name)<span class='$ownerBadgeClass'>$(ConvertTo-HtmlEncoded $ownerText)</span></span>")
     $State['Writer'].Write("<div class='details' id='d$nodeId'>")
 
+    $State['Writer'].Write("<div class='detail-path'>$(ConvertTo-HtmlEncoded $Record.Path)</div>")
+    if (-not [string]::IsNullOrWhiteSpace([string]$Record.EnumerationError)) {
+        $State['Writer'].Write("<div class='detail-error'><b>&#9888; Inaccessible:</b> Unable to enumerate child items. $(ConvertTo-HtmlEncoded $Record.EnumerationError)</div>")
+    }
+
     if ($Record.Error) {
-        $State['Writer'].Write("<div class='detail-path'>$(ConvertTo-HtmlEncoded $Record.Path)</div>")
         $State['Writer'].Write("<div class='detail-error'><b>&#9888; Error:</b> $(ConvertTo-HtmlEncoded $Record.Error)</div>")
     } else {
-        $State['Writer'].Write("<div class='detail-path'>$(ConvertTo-HtmlEncoded $Record.Path)</div>")
         $State['Writer'].Write("<div class='detail-owner'><b>Owner:</b> $(ConvertTo-HtmlEncoded $Record.Owner)</div>")
         $State['Writer'].Write("<table class='perm-table'><thead><tr><th>Identity</th><th>Rights</th><th>Type</th><th>Inherited</th></tr></thead><tbody>")
         foreach ($permission in $Record.Permissions) {
